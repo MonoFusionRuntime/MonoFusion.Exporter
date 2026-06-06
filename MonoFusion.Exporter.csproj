@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+	<PublishAot>true</PublishAot>
+	<SelfContained>true</SelfContained>
+	<NativeLib>Shared</NativeLib>
+	<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	<PlatformTarget>x86</PlatformTarget>
+	<TargetExt>.bld</TargetExt>
+  </PropertyGroup>
+  <ItemGroup>
+	<PackageReference Include="Microsoft.DotNet.ILCompiler; runtime.win-x64.Microsoft.DotNet.ILCompiler" Version="10.0.8" />
+	<PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+  </ItemGroup>
+
+	<Target Name="PostPublishRename" AfterTargets="Publish">
+		<Exec Command="move /Y &quot;$(PublishDir)MonoFusion.Exporter.dll&quot; &quot;../MonoFusion.MFX/Data/Runtime/MonoFusion.Exporter.bld&quot;" />
+	</Target>
+</Project>
