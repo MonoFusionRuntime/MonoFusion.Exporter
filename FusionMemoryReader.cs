@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.IO.Compression;
+using System.Text;
 
 namespace MonoFusion.Exporter
 {
@@ -8,6 +9,10 @@ namespace MonoFusion.Exporter
 		private int _bitsLeft;
 
 		public FusionMemoryReader(PartialStream stream) : base(stream)
+		{
+		}
+
+		public FusionMemoryReader(MemoryStream stream) : base(stream)
 		{
 		}
 
@@ -127,6 +132,23 @@ namespace MonoFusion.Exporter
 			string result = Encoding.Unicode.GetString(ReadBytes((int)length * 2));
 			int nullIndex = result.IndexOf('\0');
 			return nullIndex == -1 ? result : result[..nullIndex];
+		}
+			
+		// Expects format of
+		// int    : Decompressed Size
+		// int    : Compressed Size
+		// byte[] : Compressed Data
+		public FusionMemoryReader ReadCompressedData()
+		{
+			int dSize = ReadInt32();
+			int cSize = ReadInt32();
+			byte[] data = ReadBytes(cSize);
+
+			MemoryStream decompressed = new MemoryStream(dSize);
+			ZLibStream zlib = new ZLibStream(new MemoryStream(data), CompressionMode.Decompress);
+			zlib.CopyTo(decompressed);
+			decompressed.Position = 0;
+			return new FusionMemoryReader(decompressed);
 		}
 	}
 }

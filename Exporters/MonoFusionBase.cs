@@ -11,6 +11,7 @@ namespace MonoFusion.Exporter.Exporters
 		public const ushort CHUNK_MFAPATH    = 0x222E;
 		public const ushort CHUNK_EXTENSIONS = 0x2234;
 		public const ushort CHUNK_SHADERBANK = 0x2243;
+		public const ushort CHUNK_FONTBANK   = 0x6667;
 
 		public string MonoFusionPath = string.Empty;
 		protected readonly string _platformName;
@@ -76,6 +77,7 @@ namespace MonoFusion.Exporter.Exporters
 			{
 				FusionMemoryReader chunkReader = new FusionMemoryReader(ccnFeeder.GetChunkReader(CHUNK_MFAPATH));
 				mfaPath = chunkReader.ReadUnicodeString();
+				Console.WriteLine($"Found mfa at '{mfaPath}'");
 			}
 
 			List<string> extensions = [];
@@ -98,10 +100,10 @@ namespace MonoFusion.Exporter.Exporters
 					if (File.Exists(Path.Combine(MonoFusionPath, zipFileName)))
 					{
 						extensions.Add(name);
-						Console.WriteLine($"Found extension '{name}'");
+						Console.WriteLine($"Found extension '{Path.GetFileNameWithoutExtension(name)}'");
 					}
 					else
-						Console.WriteLine($"Could not find extension '{zipFileName}'");
+						Console.WriteLine($"Could not find extension '{Path.GetFileNameWithoutExtension(name)}'");
 				}
 			}
 
@@ -123,11 +125,50 @@ namespace MonoFusion.Exporter.Exporters
 
 					chunkReader.BaseStream.Position = offsets[i] + nameOffset;
 					string name = chunkReader.ReadASCII();
+					Console.WriteLine($"Found shader '{name}'");
 
 					chunkReader.BaseStream.Position = offsets[i] + dataOffset;
 					string data = chunkReader.ReadASCII();
 
 					shaders.Add((name, data));
+				}
+			}
+
+			Dictionary<uint, FusionFont> fonts = [];
+			if (ccnFeeder.HasChunk(CHUNK_FONTBANK))
+			{
+				FusionMemoryReader chunkReader = new FusionMemoryReader(ccnFeeder.GetChunkReader(CHUNK_FONTBANK));
+				uint count = chunkReader.ReadUInt32();
+
+				Console.WriteLine($"Adding {count} fonts");
+				for (int i = 0; i < count; i++)
+				{
+					uint handle = chunkReader.ReadUInt32();
+					FusionMemoryReader dataReader = chunkReader.ReadCompressedData();
+					dataReader.Skip(12); // Checksum, References, and Size
+
+					FusionFont font = new FusionFont()
+					{
+						lfHeight = dataReader.ReadInt32(),
+						lfWidth = dataReader.ReadInt32(),
+						lfEscapement = dataReader.ReadInt32(),
+						lfOrientation = dataReader.ReadInt32(),
+						lfWeight = dataReader.ReadInt32(),
+						lfItalic = dataReader.ReadByte() != 0,
+						lfUnderline = dataReader.ReadByte() != 0,
+						lfStrikeOut = dataReader.ReadByte() != 0,
+						lfCharSet = dataReader.ReadByte(),
+						lfOutPrecision = dataReader.ReadByte(),
+						lfClipPrecision = dataReader.ReadByte(),
+						lfQuality = dataReader.ReadByte(),
+						lfPitchAndFamily = dataReader.ReadByte(),
+
+						// No need to use fixed size (32) as we're inside the compressed data
+						lfFaceName = dataReader.ReadUnicodeString()
+					};
+
+					Console.WriteLine($"Found font '{font.lfFaceName}'");
+					fonts.Add(handle, font);
 				}
 			}
 
@@ -185,7 +226,26 @@ namespace MonoFusion.Exporter.Exporters
 				}
 			}
 
-			string effectsPath = Path.Combine(sourceDir, "Effects");
+			if (fonts.Count > 0)
+			{
+				Directory.CreateDirectory(Path.Combine(targetDir, "Content\\Fonts"));
+				foreach (uint handle in fonts.Keys)
+				{
+					FontBuilder fontBuilder = new FontBuilder(fonts[handle]);
+					if (!fontBuilder.IsBuildable()) // Default to Arial
+					{
+						FusionFont arialFont = fonts[handle];
+						arialFont.lfFaceName = "Arial";
+						fontBuilder = new FontBuilder(arialFont);
+					}
+
+					string outPath_mgcb = Path.Combine("Fonts", "Fnt" + handle + fontBuilder.GetExtension());
+					string outPath = Path.Combine(targetDir, "Content", outPath_mgcb);
+					File.WriteAllText(outPath, fontBuilder.Build());
+					writer.AddFont(outPath_mgcb);
+				}
+			}
+
 			if (shaders.Count > 0)
 			{
 				Directory.CreateDirectory(Path.Combine(targetDir, "Content\\Effects"));
