@@ -239,7 +239,7 @@ namespace MonoFusion.Exporter.Exporters
 						fontBuilder = new FontBuilder(arialFont);
 					}
 
-					string outPath_mgcb = Path.Combine("Fonts", "Fnt" + handle + fontBuilder.GetExtension());
+					string outPath_mgcb = Path.Combine("Fonts", "Fnt" + handle.ToString("D4") + fontBuilder.GetExtension());
 					string outPath = Path.Combine(targetDir, "Content", outPath_mgcb);
 					File.WriteAllText(outPath, fontBuilder.Build());
 					writer.AddFont(outPath_mgcb);
