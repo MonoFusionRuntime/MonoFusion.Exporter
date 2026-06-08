@@ -76,6 +76,10 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 			return ""; // Default: Empty
 		}
 
+		/// <summary>
+		/// If you return anything that is not 0,
+		/// this value will replace the PAMU/PAME header in your ccn.
+		/// </summary>
 		public virtual int GetRuntimeType()
 		{
 			return 0; // Default: 0
@@ -86,12 +90,18 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 			return 2048; // Default: 2048
 		}
 
+		/// <summary>
+		/// Due to a bug in the engine, this and BuildFont can never be called
+		/// </summary>
 		public virtual bool SupportsBuildFont()
 		{
 			return false; // Default: false
 		}
 
-		public virtual void BuildFont()
+		/// <summary>
+		/// Due to a bug in the engine, this and SupportsBuildFont can never be called
+		/// </summary>
+		public virtual void BuildFont(FusionFont font, UIntPtr unknown, string filePath)
 		{
 			
 		}
@@ -222,9 +232,10 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 		}
 
 		[UnmanagedCallersOnly(EntryPoint = "BuildFont", CallConvs = [typeof(CallConvStdcall)])]
-		public static void BuildFont(int index)
+		public static unsafe void BuildFont(int index, FusionFontNative* font, nuint unknown, nint filePath)
 		{
-			Exporters[index].BuildFont();
+			string filePathS = Marshal.PtrToStringUni(filePath)!;
+			Exporters[index].BuildFont(FusionFont.FromNative(font), unknown, filePathS);
 		}
 
 		[UnmanagedCallersOnly(EntryPoint = "Build", CallConvs = [typeof(CallConvStdcall)])]
