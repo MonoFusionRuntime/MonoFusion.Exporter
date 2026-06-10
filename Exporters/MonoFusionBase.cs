@@ -341,14 +341,14 @@ namespace MonoFusion.Exporter.Exporters
 			nameChunk.Write(soundNames.Count);
 			foreach ((uint handle, string name) in soundNames)
 			{
-				nameChunk.Write(handle);
+				nameChunk.Write((ushort)handle);
 				nameChunk.Write(Encoding.Unicode.GetBytes(name));
 				nameChunk.Write((ushort)0); // NTB
 			}
 			nameChunk.Write(musicNames.Count);
 			foreach ((uint handle, string name) in musicNames)
 			{
-				nameChunk.Write(handle);
+				nameChunk.Write((ushort)handle);
 				nameChunk.Write(Encoding.Unicode.GetBytes(name));
 				nameChunk.Write((ushort)0); // NTB
 			}
