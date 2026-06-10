@@ -1,4 +1,5 @@
 ﻿using System.IO.Compression;
+using System.Text;
 using MonoFusion.Exporter.Exporters.Boiler;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats;
@@ -11,7 +12,11 @@ namespace MonoFusion.Exporter.Exporters
 		public const ushort CHUNK_MFAPATH    = 0x222E;
 		public const ushort CHUNK_EXTENSIONS = 0x2234;
 		public const ushort CHUNK_SHADERBANK = 0x2243;
+		public const ushort CHUNK_NAMEBANK   = 0x6660;
+		public const ushort CHUNK_IMAGEBANK  = 0x6666;
 		public const ushort CHUNK_FONTBANK   = 0x6667;
+		public const ushort CHUNK_SOUNDBANK  = 0x6668;
+		public const ushort CHUNK_MUSICBANK  = 0x6669;
 
 		public string MonoFusionPath = string.Empty;
 		protected readonly string _platformName;
@@ -172,6 +177,9 @@ namespace MonoFusion.Exporter.Exporters
 				}
 			}
 
+			// Read/write custom sound/music name chunk
+			AddNameBankChunk(ccnFeeder, mfaPath);
+
 			ZipFile.ExtractToDirectory(Path.Combine(MonoFusionPath, "_RuntimeBase.zip"), targetDir);
 			ZipFile.ExtractToDirectory(Path.Combine(MonoFusionPath, $"_Runtime{_packageName}.zip"), targetDir, overwriteFiles: true);
 
@@ -279,6 +287,74 @@ namespace MonoFusion.Exporter.Exporters
 
 			Task.WaitAll(imageTasks);
 			return true;
+		}
+
+		private static void AddNameBankChunk(CCNFeeder ccnFeeder, string mfaPath)
+		{
+			BinaryReader mfaReader = new BinaryReader(File.OpenRead(mfaPath));
+			mfaReader.BaseStream.Position = 20;
+			for (int i = 0; i < 3; i++)
+			{
+				ushort skip = mfaReader.ReadUInt16();
+				mfaReader.BaseStream.Position += skip * 2 + 2;
+			}
+			uint stampSize = mfaReader.ReadUInt32();
+			mfaReader.BaseStream.Position += stampSize + 4; // 4 = ATNF
+			uint fontCount = mfaReader.ReadUInt32();
+			mfaReader.BaseStream.Position += fontCount * 108; // 108 = Font Size
+
+			List<(uint, string)> soundNames = [];
+			mfaReader.BaseStream.Position += 4; // 4 = APMS
+			uint soundCount = mfaReader.ReadUInt32();
+			for (int i = 0; i < soundCount; i++)
+			{
+				uint handle = mfaReader.ReadUInt32();
+				mfaReader.BaseStream.Position += 8;
+				uint size = mfaReader.ReadUInt32();
+				mfaReader.BaseStream.Position += 8;
+				int nameLength = mfaReader.ReadInt32();
+				string name = Encoding.Unicode.GetString(mfaReader.ReadBytes(nameLength * 2)).TrimEnd('\0');
+				mfaReader.BaseStream.Position += size - nameLength * 2;
+
+				soundNames.Add((handle, name));
+			}
+
+			List<(uint, string)> musicNames = [];
+			mfaReader.BaseStream.Position += 4; // 4 = APMS
+			uint musicCount = mfaReader.ReadUInt32();
+			for (int i = 0; i < musicCount; i++)
+			{
+				uint handle = mfaReader.ReadUInt32();
+				mfaReader.BaseStream.Position += 8;
+				uint size = mfaReader.ReadUInt32();
+				mfaReader.BaseStream.Position += 8;
+				int nameLength = mfaReader.ReadInt32();
+				string name = Encoding.Unicode.GetString(mfaReader.ReadBytes(nameLength * 2)).TrimEnd('\0');
+				mfaReader.BaseStream.Position += size;
+
+				musicNames.Add((handle, name));
+			}
+
+			mfaReader.Close();
+
+			BinaryWriter nameChunk = new BinaryWriter(new MemoryStream());
+			nameChunk.Write(soundNames.Count);
+			foreach ((uint handle, string name) in soundNames)
+			{
+				nameChunk.Write(handle);
+				nameChunk.Write(Encoding.Unicode.GetBytes(name));
+				nameChunk.Write((ushort)0); // NTB
+			}
+			nameChunk.Write(musicNames.Count);
+			foreach ((uint handle, string name) in musicNames)
+			{
+				nameChunk.Write(handle);
+				nameChunk.Write(Encoding.Unicode.GetBytes(name));
+				nameChunk.Write((ushort)0); // NTB
+			}
+
+			ccnFeeder.InsertChunk(CHUNK_NAMEBANK, (MemoryStream)nameChunk.BaseStream, CHUNK_IMAGEBANK, CHUNK_FONTBANK, CHUNK_SOUNDBANK, CHUNK_MUSICBANK);
+			ccnFeeder.Resave();
 		}
 
 		public override string[] GetSupportedExtensions()
