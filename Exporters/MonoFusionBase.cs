@@ -554,9 +554,12 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 {
 	public static partial class ExporterHandler
 	{
+		private static string RuntimesPath;
+
 		static ExporterHandler()
 		{
-			AddExporterWindowsDX("Windows (DirectX)");
+            RuntimesPath = Path.Combine(Directory.GetCurrentDirectory(), "MonoFusion", "Runtimes");
+            AddExporterWindowsDX("Windows (DirectX)");
 			AddExporterDesktopGL("Windows (OpenGL)");
 			AddExporterUWP      ("Windows (UWP)");
 			AddExporterDesktopGL("Mac (OpenGL)");
@@ -568,32 +571,57 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 
 		static void AddExporterWindowsDX(string platformName)
 		{
-			Exporters.Add(new MonoFusionWindowsDX(platformName, true));
-			Exporters.Add(new MonoFusionWindowsDX(platformName, false));
+			if (File.Exists(Path.Combine(RuntimesPath, "RuntimeWindowsDX.zip")))
+			{
+				Exporters.Add(new MonoFusionWindowsDX(platformName, true));
+				Exporters.Add(new MonoFusionWindowsDX(platformName, false));
+			}
+			else
+				Console.WriteLine("Could not find WindowsDX Runtime");
 		}
 
 		static void AddExporterDesktopGL(string platformName)
-		{
-			Exporters.Add(new MonoFusionDesktopGL(platformName, true));
-			Exporters.Add(new MonoFusionDesktopGL(platformName, false));
-		}
+        {
+            if (File.Exists(Path.Combine(RuntimesPath, "RuntimeDesktopGL.zip")))
+            {
+                Exporters.Add(new MonoFusionDesktopGL(platformName, true));
+				Exporters.Add(new MonoFusionDesktopGL(platformName, false));
+            }
+            else
+                Console.WriteLine("Could not find DesktopGL Runtime");
+        }
 
 		static void AddExporterUWP(string platformName)
-		{
-			Exporters.Add(new MonoFusionUWP(platformName, true));
-			Exporters.Add(new MonoFusionUWP(platformName, false));
-		}
+        {
+            if (File.Exists(Path.Combine(RuntimesPath, "RuntimeUWP.zip")))
+            {
+                Exporters.Add(new MonoFusionUWP(platformName, true));
+				Exporters.Add(new MonoFusionUWP(platformName, false));
+            }
+            else
+                Console.WriteLine("Could not find UWP Runtime");
+        }
 
 		static void AddExporterAndroid(string platformName)
-		{
-			Exporters.Add(new MonoFusionAndroid(platformName, true));
-			Exporters.Add(new MonoFusionAndroid(platformName, false));
+        {
+            if (File.Exists(Path.Combine(RuntimesPath, "RuntimeAndroid.zip")))
+            {
+                Exporters.Add(new MonoFusionAndroid(platformName, true));
+				Exporters.Add(new MonoFusionAndroid(platformName, false));
+			}
+            else
+                Console.WriteLine("Could not find Android Runtime");
 		}
 
 		static void AddExporterBlazorGL(string platformName)
-		{
-			Exporters.Add(new MonoFusionBlazorGL(platformName, true));
-			Exporters.Add(new MonoFusionBlazorGL(platformName, false));
-		}
+        {
+            if (File.Exists(Path.Combine(RuntimesPath, "RuntimeBlazorGL.zip")))
+            {
+                Exporters.Add(new MonoFusionBlazorGL(platformName, true));
+				Exporters.Add(new MonoFusionBlazorGL(platformName, false));
+            }
+            else
+                Console.WriteLine("Could not find BlazorGL Runtime");
+        }
 	}
 }
