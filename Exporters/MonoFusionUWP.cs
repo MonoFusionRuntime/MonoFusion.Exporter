@@ -32,6 +32,11 @@
 					return "MSIX Package|*.msix|All files|*.*||";
 			}
 			return "ERROR UNKNOWN FORMAT|*.ERROR";
-		}
-	}
+        }
+
+        public override string GetExtensionCompatName()
+        {
+            return "UWP";
+        }
+    }
 }

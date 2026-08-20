@@ -203,6 +203,17 @@ namespace MonoFusion.Exporter.Exporters
 			return process.ExitCode == 0;
 		}
 
+        public override string GetExtensionCompatName()
+        {
+            return _platformName switch
+            {
+                "Windows (OpenGL)" => "Windows",
+                "Mac (OpenGL)" => "Mac",
+                "Linux (OpenGL)" => "Linux",
+                _ => "N/A",
+            };
+        }
+
 		public DesktopGLArch GetArch()
 		{
 			TaskDialog.TASKDIALOG_BUTTON[] radios;

@@ -1,5 +1,7 @@
 ﻿using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using MonoFusion.Exporter.Exporters.Boiler;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats;
@@ -60,7 +62,7 @@ namespace MonoFusion.Exporter.Exporters
 
 		public override bool Build(string targetFilePath, string ccnFilePath, uint buildFlags)
 		{
-			if (!File.Exists(Path.Combine(MonoFusionPath, $"_Runtime{_packageName}.zip")))
+			if (!File.Exists(Path.Combine(MonoFusionPath, "Runtimes", $"Runtime{_packageName}.zip")))
 			{
 				Console.WriteLine("Failed to find runtime package " + _packageName);
 				return false;
@@ -92,7 +94,8 @@ namespace MonoFusion.Exporter.Exporters
 				ushort count = chunkReader.ReadUInt16();
 				chunkReader.BaseStream.Position += 2; // Max Handle
 
-				Console.WriteLine($"Adding extensions from '{MonoFusionPath}'");
+				string extPath = Path.Combine(MonoFusionPath, "Extensions");
+				Console.WriteLine($"Adding extensions from '{extPath}'");
 				for (int i = 0; i < count; i++)
 				{
 					long pos = chunkReader.BaseStream.Position;
@@ -101,8 +104,8 @@ namespace MonoFusion.Exporter.Exporters
 					string name = chunkReader.ReadUnicodeString();
 					chunkReader.BaseStream.Position = pos + size; // Skip to next
 
-					string zipFileName = Path.ChangeExtension(name, ".zip");
-					if (File.Exists(Path.Combine(MonoFusionPath, zipFileName)))
+					string zipFileName = Path.ChangeExtension(name, ".json");
+					if (File.Exists(Path.Combine(extPath, zipFileName)))
 					{
 						extensions.Add(name);
 						Console.WriteLine($"Found extension '{Path.GetFileNameWithoutExtension(name)}'");
@@ -180,10 +183,10 @@ namespace MonoFusion.Exporter.Exporters
 			// Read/write custom sound/music name chunk
 			AddNameBankChunk(ccnFeeder, mfaPath);
 
-			ZipFile.ExtractToDirectory(Path.Combine(MonoFusionPath, "_RuntimeBase.zip"), targetDir);
-			ZipFile.ExtractToDirectory(Path.Combine(MonoFusionPath, $"_Runtime{_packageName}.zip"), targetDir, overwriteFiles: true);
+			ZipFile.ExtractToDirectory(Path.Combine(MonoFusionPath, "Runtimes", "RuntimeBase.zip"), targetDir);
+			ZipFile.ExtractToDirectory(Path.Combine(MonoFusionPath, "Runtimes", $"Runtime{_packageName}.zip"), targetDir, overwriteFiles: true);
 
-			MGCBWriter writer = new MGCBWriter(_mgcbPlatform);
+			MGCBWriter writer = new MGCBWriter(_mgcbPlatform, MonoFusionPath);
 
 			string ccnPath_mgcb = "Application.ccx";
 			File.Copy(ccnFilePath, Path.Combine(targetDir, "Content", ccnPath_mgcb));
@@ -266,23 +269,45 @@ namespace MonoFusion.Exporter.Exporters
 				}
 			}
 
-			// Add default files
-			writer.AddFont("Arial27.spritefont");
-			writer.AddEffect("invert.fx");
-			writer.AddEffect("mono.fx");
-
-			writer.WriteTo(Path.Combine(targetDir, "Content\\Content.mgcb"));
-
 			// Add extensions
 			List<string> extensionLoaders = [];
 			foreach (string extension in extensions)
-			{
-				string zipFilePath = Path.Combine(MonoFusionPath, Path.ChangeExtension(extension, ".zip"));
-				ZipFile.ExtractToDirectory(zipFilePath, targetDir, true);
-				extensionLoaders.AddRange(GenerateExtensionLoader(extension));
-			}
-			PushExtensionLoaders(Path.Combine(targetDir, "Runtime\\Extensions\\CExtLoad.cs"), extensionLoaders);
+            {
+                string extName = Path.GetFileNameWithoutExtension(extension);
+                JsonNode? j = JsonNode.Parse(File.ReadAllText(Path.Combine(MonoFusionPath, "Extensions", extName + ".json")));
 
+                // Code
+                string codePath = Path.Combine(MonoFusionPath, "Extensions", "Code", extName);
+				CopyDirectory(codePath, Path.Combine(targetDir, "Runtime", "Extensions", extName));
+				extensionLoaders.AddRange(GenerateExtensionLoader(j, extension));
+
+				// Content
+				if (j != null)
+				{
+					Console.WriteLine("Found JsonNode from " + extName);
+					JsonNode? contentFiles = j["contentFiles"];
+					if (contentFiles != null && contentFiles.GetValueKind() == JsonValueKind.Array)
+                    {
+                        Console.WriteLine("Found Content Files from " + extName);
+                        writer.AddExtension(extName, contentFiles.AsArray());
+					}
+
+					JsonNode? contentImporters = j["contentImporters"];
+					if (contentImporters != null && contentImporters.GetValueKind() == JsonValueKind.Array)
+                        foreach (JsonNode? val in contentImporters.AsArray())
+                            if (val != null && val.GetValueKind() == JsonValueKind.String)
+                                writer.AddReference(val.GetValue<string>());
+                }
+            }
+
+            // Add default files
+            writer.AddFont("Arial27.spritefont");
+            writer.AddEffect("invert.fx");
+            writer.AddEffect("mono.fx");
+
+            writer.WriteTo(Path.Combine(targetDir, "Content\\Content.mgcb"));
+
+            PushExtensionLoaders(Path.Combine(targetDir, "Runtime\\Extensions\\CExtLoad.cs"), extensionLoaders);
 			RenameSolution(targetDir, Path.GetFileNameWithoutExtension(targetFilePath), Path.GetFileNameWithoutExtension(mfaPath));
 
 			Task.WaitAll(imageTasks);
@@ -360,18 +385,36 @@ namespace MonoFusion.Exporter.Exporters
 		public override string[] GetSupportedExtensions()
 		{
 			List<string> extensions = [];
-			Console.WriteLine($"Looking for supported extensions in '{MonoFusionPath = Path.Combine(Directory.GetCurrentDirectory(), "MonoFusion")}'");
-			foreach (string file in Directory.GetFiles(MonoFusionPath)) // Data/Runtime is the working directory
+			MonoFusionPath = Path.Combine(Directory.GetCurrentDirectory(), "MonoFusion"); // Data/Runtime is the working directory
+            string extPath = Path.Combine(MonoFusionPath, "Extensions");
+            Console.WriteLine($"Looking for supported extensions in '{extPath}'");
+			foreach (string file in Directory.GetFiles(extPath))
 			{
 				string fileName = Path.GetFileName(file);
-				if (Path.GetExtension(fileName) == ".zip" && !fileName.StartsWith("_Runtime"))
+				if (Path.GetExtension(fileName) == ".json")
 				{
-					fileName = Path.ChangeExtension(fileName, ".mfx");
-					Console.WriteLine($"Listed supported extension '{fileName}'");
-					extensions.Add(fileName);
+                    JsonNode? j = JsonNode.Parse(File.ReadAllText(file));
+					if (j != null)
+					{
+						JsonNode? compatibility = j["compatibility"];
+						if (compatibility == null || compatibility.GetValueKind() != JsonValueKind.Array)
+							continue;
+
+						if (compatibility.AsArray().Any(node => node?.GetValue<string>() == GetExtensionCompatName()))
+						{
+                            fileName = Path.ChangeExtension(fileName, ".mfx");
+                            Console.WriteLine($"Listed supported extension '{fileName}' for {GetExtensionCompatName()}");
+                            extensions.Add(fileName);
+                        }
+					}
 				}
 			}
 			return [.. extensions];
+		}
+
+		public virtual string GetExtensionCompatName()
+		{
+			return "N/A";
 		}
 
 		public override string GetEffectExt()
@@ -381,17 +424,25 @@ namespace MonoFusion.Exporter.Exporters
 
 		public override string GetEffectBuildCommandLine()
 		{
-			return "Data\\Runtime\\MonoFusion\\MonoFusion.ShaderBuilder.exe \"<inputfile>\" \"<outputfile>\"";
+			return "Data\\Runtime\\MonoFusion\\Tools\\MonoFusion.ShaderBuilder.exe \"<inputfile>\" \"<outputfile>\"";
 		}
 
-		public static List<string> GenerateExtensionLoader(string name)
+		public static List<string> GenerateExtensionLoader(JsonNode? j, string name)
 		{
+			string className = $"CRun{name}";
+			if (j != null)
+			{
+				JsonNode? extensionClassName = j["extensionClassName"];
+				if (extensionClassName != null && extensionClassName.GetValueKind() == JsonValueKind.String)
+					className = extensionClassName.GetValue<string>();
+            }
+
 			string indent = new(' ', 16);
 			List<string> loader = [];
 			name = Path.GetFileNameWithoutExtension(name);
 			loader.Add(indent + $"case \"{name}\":");
 			indent += new string(' ', 4);
-			loader.Add(indent + $"return new CRun{name}();");
+			loader.Add(indent + $"return new {className}();");
 			return loader;
 		}
 
@@ -511,8 +562,8 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 			AddExporterDesktopGL("Mac (OpenGL)");
 			AddExporterDesktopGL("Linux (OpenGL)");
 			AddExporterAndroid  ("Android (OpenGL)");
-			AddExporterUWP      ("Xbox One/Series (UWP)");
-			AddExporterBlazorGL ("Web (BlazorGL)");
+			//AddExporterUWP      ("Xbox One/Series (UWP)");
+			//AddExporterBlazorGL ("Web (BlazorGL)");
 		}
 
 		static void AddExporterWindowsDX(string platformName)

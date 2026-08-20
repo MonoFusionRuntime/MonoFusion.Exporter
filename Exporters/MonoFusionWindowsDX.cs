@@ -94,9 +94,14 @@ namespace MonoFusion.Exporter.Exporters
 			Marshal.FreeHGlobal(filter);
 
 			return process.ExitCode == 0;
-		}
+        }
 
-		public WindowsDXArch GetArch()
+        public override string GetExtensionCompatName()
+        {
+            return "Windows";
+        }
+
+        public WindowsDXArch GetArch()
 		{
 			TaskDialog.TASKDIALOG_BUTTON[] radios =
 			[

@@ -90,6 +90,11 @@ namespace MonoFusion.Exporter.Exporters
 			CopyDirectory(finalPath, targetDir);
 
 			return process.ExitCode == 0;
-		}
-	}
+        }
+
+        public override string GetExtensionCompatName()
+        {
+            return "Web";
+        }
+    }
 }

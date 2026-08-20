@@ -1,4 +1,8 @@
-﻿namespace MonoFusion.Exporter
+﻿using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Xml.Linq;
+
+namespace MonoFusion.Exporter
 {
 	public class MGCBWriter
 	{
@@ -15,12 +19,16 @@
 
 		private bool _compress = false;
 		private string _platform = "Windows";
-		private List<(Type, string)> _content = [];
+        private string _monoFusionPath;
+        private List<(Type, string)> _content = [];
+        private List<(string, JsonArray)> _extensions = [];
+		private List<string> _references = [];
 
-		public MGCBWriter(string platform, bool compress = false)
+        public MGCBWriter(string platform, string monoFusionPath, bool compress = false)
 		{
 			_platform = platform;
-			_compress = compress;
+            _monoFusionPath = monoFusionPath;
+            _compress = compress;
 		}
 
 		public void AddBinary(string filePath)
@@ -56,8 +64,20 @@
 			_content.Add((Type.Effect, filePath));
 		}
 
+		public void AddExtension(string extName, JsonArray content)
+		{
+			_extensions.Add((extName, content));
+		}
+
+		public void AddReference(string filePath)
+		{
+			_references.Add(filePath);
+		}
+
 		public void WriteTo(string targetPath)
 		{
+			Console.WriteLine($"Writing MGCB with {_content.Count} files, {_references.Count} references, and {_extensions.Count} extensions");
+
 			List<string> output =
 			[
 				"",
@@ -73,25 +93,132 @@
 				CreateHeaderComment("References"),
 				"",
 				CreateParameter("reference", "../MonoFusion.BinaryImporter.dll"),
+			];
+
+			foreach (string reference in _references)
+				output.Add(CreateParameter("reference", reference));
+
+			output.AddRange(
+			[
 				"",
 				CreateHeaderComment("Content"),
 				"",
-			];
-			foreach ((Type, string) content in _content)
-			{
-				output.AddRange(CreateContentEntry(content.Item1, content.Item2));
+			]);
 
-				if (content.Item1 == Type.Effect)
+			foreach ((Type type, string path) in _content)
+			{
+				output.AddRange(CreateContentEntry(type, path));
+
+				if (type == Type.Effect)
 				{
 					string ps = "ps_3_0";
 					if (_platform == "Windows" || _platform == "WindowsUniversal")
 						ps = "ps_4_0";
-					string effectPath = Path.Combine(Path.GetDirectoryName(targetPath)!, content.Item2);
+					string effectPath = Path.Combine(Path.GetDirectoryName(targetPath)!, path);
 					string effectData = File.ReadAllText(effectPath);
 					File.WriteAllText(effectPath, effectData.Replace("MONOFUSION_PS", ps));
 				}
 			}
-			File.WriteAllLines(targetPath, output);
+
+			foreach ((string extName, JsonArray content) in _extensions)
+            {
+                Console.WriteLine($"Writing Extension '{extName}' to MGCB");
+                output.AddRange(
+                [
+					CreateHeaderComment("Extension - " + extName),
+					"",
+				]);
+
+                string contentPath = Path.Combine(_monoFusionPath, "Extensions", "Content", extName);
+				string outPath = Path.Combine(Path.GetDirectoryName(targetPath)!, extName);
+				if (!Directory.Exists(outPath))
+					Directory.CreateDirectory(outPath);
+				Console.WriteLine($"Created Directory '{outPath}'");
+
+                foreach (JsonNode? j in content)
+                {
+					if (j == null)
+                    {
+                        Console.WriteLine("A Content entry was null!");
+                        continue;
+					}
+
+					JsonNode? jName = j["name"];
+					if (jName == null || jName.GetValueKind() != JsonValueKind.String)
+                    {
+                        Console.WriteLine("A Content entry's Name was null or invalid!");
+                        continue;
+                    }
+					string name = jName.GetValue<string>();
+
+                    JsonNode? jImporter = j["importer"];
+                    if (jImporter == null || jImporter.GetValueKind() != JsonValueKind.String)
+                    {
+                        Console.WriteLine($"Content entry '{name}'s Importer was null or invalid!");
+                        continue;
+                    }
+					string importer = jImporter.GetValue<string>();
+
+                    JsonNode? jProcessor = j["processor"];
+                    if (jProcessor == null || jProcessor.GetValueKind() != JsonValueKind.String)
+                    {
+                        Console.WriteLine($"Content entry '{name}'s Processor was null or invalid!");
+                        continue;
+                    }
+					string processor = jProcessor.GetValue<string>();
+
+                    // Copy file to Content folder
+					string fullPath = Path.Combine(outPath, name);
+					string shortPath = Path.Combine(extName, name);
+                    File.Copy(
+						Path.Combine(contentPath, name),
+                        fullPath
+                    );
+
+                    // Preprocess Effects
+                    if (importer == "EffectImporter" && processor == "EffectProcessor")
+                    {
+                        string ps = "ps_3_0";
+                        if (_platform == "Windows" || _platform == "WindowsUniversal")
+                            ps = "ps_4_0";
+                        string effectData = File.ReadAllText(fullPath);
+                        File.WriteAllText(fullPath, effectData.Replace("MONOFUSION_PS", ps));
+                    }
+
+                    output.Add(CreateContentHeader(shortPath));
+                    output.Add(CreateParameter("importer", importer));
+                    output.Add(CreateParameter("processor", processor));
+
+					JsonNode? processorParams = j["processorParams"];
+					if (processorParams != null && processorParams.GetValueKind() == JsonValueKind.Array)
+					{
+						foreach (JsonNode? jPp in processorParams.AsArray())
+						{
+							if (jPp == null)
+								continue;
+
+							JsonNode? jKey = jPp["key"];
+							if (jKey == null || jKey.GetValueKind() != JsonValueKind.String)
+								continue;
+							string key = jKey.GetValue<string>();
+
+							JsonNode? jValue = jPp["value"];
+							if (jValue == null || jValue.GetValueKind() != JsonValueKind.String)
+								continue;
+							string value = jValue.GetValue<string>();
+
+							output.Add(CreateProcessorParam(key, value));
+						}
+					}
+					else
+						Console.WriteLine("Could not write proccesor params for " + extName);
+
+                    output.Add(CreateParameter("build", shortPath));
+                    output.Add("");
+                }
+            }
+
+            File.WriteAllLines(targetPath, output);
 		}
 
 		private string CreateHeaderComment(string str)

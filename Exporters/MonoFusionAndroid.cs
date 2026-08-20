@@ -90,6 +90,11 @@ namespace MonoFusion.Exporter.Exporters
 			File.Move(finalPath, targetFilePath);
 
 			return process.ExitCode == 0;
-		}
-	}
+        }
+
+        public override string GetExtensionCompatName()
+        {
+            return "Android";
+        }
+    }
 }
