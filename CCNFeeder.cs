@@ -14,6 +14,12 @@
 			LoadCCN();
 		}
 
+		public void Close()
+		{
+			_reader.Close();
+			_reader.Dispose();
+		}
+
 		/// <summary>
 		/// This function assumes that the BinaryReader is a valid ccn
 		/// </summary>
