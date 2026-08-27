@@ -60,6 +60,7 @@ namespace MonoFusion.Exporter.Exporters
 								"-c Release " +
 								"--nodereuse:false " +
 								"/p:UseSharedCompilation=false " + // Prevent Steam from thinking the app is still running
+                                "/p:RunAOTCompilation=true" +
 							   $"/p:PublishDir=\"{tempTargetDir}\"",
 					WorkingDirectory = solutionDir,
 					UseShellExecute = false,
@@ -95,6 +96,21 @@ namespace MonoFusion.Exporter.Exporters
         public override string GetExtensionCompatName()
         {
             return "Web";
+        }
+
+        public override void RenameSolution(string solutionDir, string saveName, string mfaName)
+        {
+            // Rename the assembly
+            RenameMGCBAssemblyGeneric(Path.Combine(solutionDir, "Content\\Content.mgcb"), saveName);
+            ReplaceStrGeneric(Path.Combine(solutionDir, "Pages", "Index.razor"), "MonoFusion.Runtime", saveName);
+            ReplaceStrGeneric(Path.Combine(solutionDir, "Pages", "Index.razor.cs"), "MonoFusion.Runtime", saveName);
+            ReplaceStrGeneric(Path.Combine(solutionDir, "wwwroot", "index.html"), "MonoFusion.Runtime", saveName);
+            ReplaceStrGeneric(Path.Combine(solutionDir, "_Imports.razor"), "MonoFusion.Runtime", saveName);
+            ReplaceStrGeneric(Path.Combine(solutionDir, "Program.cs"), "MonoFusion.Runtime", saveName);
+            ReplaceStrGeneric(Path.Combine(solutionDir, "MonoFusion.Runtime.csproj"), "MonoFusion.Runtime", saveName);
+            RenameFileGeneric(Path.Combine(solutionDir, "MonoFusion.Runtime.csproj"), mfaName);
+            ReplaceStrGeneric(Path.Combine(solutionDir, "MonoFusion.Runtime.sln"), "MonoFusion.Runtime", mfaName);
+            RenameFileGeneric(Path.Combine(solutionDir, "MonoFusion.Runtime.sln"), mfaName);
         }
     }
 }
