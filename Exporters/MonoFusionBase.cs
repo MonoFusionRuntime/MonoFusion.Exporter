@@ -189,7 +189,9 @@ namespace MonoFusion.Exporter.Exporters
 
 			MGCBWriter writer = new MGCBWriter(_mgcbPlatform, MonoFusionPath);
 
-			string ccnPath_mgcb = "Application.ccx";
+			ccnFeeder.Close();
+
+            string ccnPath_mgcb = "Application.ccx";
 			File.Copy(ccnFilePath, Path.Combine(targetDir, "Content", ccnPath_mgcb));
 			writer.AddBinary(ccnPath_mgcb);
 
