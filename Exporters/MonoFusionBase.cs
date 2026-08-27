@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MonoFusion.Exporter.Exporters.Boiler;
+using NuGet.Versioning;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.PixelFormats;
@@ -271,6 +272,8 @@ namespace MonoFusion.Exporter.Exporters
 
 			// Add extensions
 			List<string> extensionLoaders = [];
+			List<string> extensionNuGets = [];
+			List<string> extensionNuGetVersions = [];
 			foreach (string extension in extensions)
             {
                 string extName = Path.GetFileNameWithoutExtension(extension);
@@ -297,7 +300,57 @@ namespace MonoFusion.Exporter.Exporters
                         foreach (JsonNode? val in contentImporters.AsArray())
                             if (val != null && val.GetValueKind() == JsonValueKind.String)
                                 writer.AddReference(val.GetValue<string>());
+
+					JsonNode? nugetPackages = j["nugetPackages"];
+					if (nugetPackages != null && nugetPackages.GetValueKind() == JsonValueKind.Array)
+						foreach (JsonNode? package in nugetPackages.AsArray())
+							if (package != null && package.GetValueKind() == JsonValueKind.Object)
+							{
+								JsonNode? packageName = package["packageName"];
+								JsonNode? packageVersion = package["packageVersion"];
+								string packageNameS = string.Empty, packageVersionS = string.Empty;
+								if (packageName != null && packageName.GetValueKind() == JsonValueKind.String)
+								{
+									packageNameS = packageName.GetValue<string>();
+                                    continue;
+								}
+								if (packageVersion != null && packageVersion.GetValueKind() == JsonValueKind.String)
+								{
+                                    packageVersionS = packageVersion.GetValue<string>();
+                                    continue;
+								}
+
+                                int duplicate = extensionNuGets.IndexOf(packageNameS);
+								if (duplicate != -1)
+                                {
+                                    NuGetVersion thisVer = NuGetVersion.Parse(packageVersionS);
+                                    NuGetVersion thatVer = NuGetVersion.Parse(extensionNuGetVersions[duplicate]);
+									if (thisVer > thatVer)
+										extensionNuGetVersions[duplicate] = packageVersionS;
+									continue;
+                                }
+
+                                extensionNuGets.Add(packageNameS);
+								extensionNuGetVersions.Add(packageVersionS);
+                            }
                 }
+            }
+
+			// Add NuGet Packages
+			string csprojPath = Path.Combine(targetDir, "MonoFusion.Runtime.csproj");
+			if (File.Exists(csprojPath) && extensionNuGets.Count > 0)
+			{
+				List<string> csprojData = File.ReadAllLines(csprojPath).ToList();
+				csprojData.RemoveAt(csprojData.Count - 1);
+				csprojData.Add("  <ItemGroup> <!-- Extension NuGets -->");
+                for (int i = 0; i < extensionNuGets.Count; i++)
+				{
+					string packageName = extensionNuGets[i];
+					string packageVersion = extensionNuGetVersions[i];
+					csprojData.Add($"    <PackageReference Include=\"{packageName}\" Version=\"{packageVersion}\" />");
+                }
+                csprojData.Add("  </ItemGroup>");
+                csprojData.Add("</Project>");
             }
 
             // Add default files
