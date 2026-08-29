@@ -1,12 +1,14 @@
-﻿using System.IO.Compression;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
+﻿using FFMediaToolkit;
+using FFMediaToolkit.Decoding;
 using MonoFusion.Exporter.Exporters.Boiler;
 using NuGet.Versioning;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.PixelFormats;
+using System.IO.Compression;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace MonoFusion.Exporter.Exporters
 {
@@ -43,7 +45,7 @@ namespace MonoFusion.Exporter.Exporters
 		public override BuildFlag GetBuildOptions()
 		{
 			//return uint.MaxValue - BuildFlag.CompressAssets;
-			return BuildFlag.ExternalImages | BuildFlag.ExternalSounds | BuildFlag.ExternalMusic | BuildFlag.UpdatedFormat | BuildFlag.AllowChildEvents;
+			return BuildFlag.ExternalImages | BuildFlag.ExternalSounds | BuildFlag.ExternalMusic | BuildFlag.AllowChildEvents;
 		}
 
 		public override string GetFileSelectorTitle()
@@ -181,7 +183,10 @@ namespace MonoFusion.Exporter.Exporters
 				}
 			}
 
-			// Read/write custom sound/music name chunk
+			// Write Custom Sound Bank
+			SoundBankRecovery.ReadFromMFA(mfaPath).WriteToCCN(ccnFeeder, GetSoundFrequencies(Path.Combine(sourceDir, "Sounds")));
+
+			// Read/write custom music name chunk (TEMP)
 			AddNameBankChunk(ccnFeeder, mfaPath);
 
 			ZipFile.ExtractToDirectory(Path.Combine(MonoFusionPath, "Runtimes", "RuntimeBase.zip"), targetDir);
@@ -369,6 +374,22 @@ namespace MonoFusion.Exporter.Exporters
 			return true;
 		}
 
+		private Dictionary<uint, int> GetSoundFrequencies(string soundPath)
+		{
+			Dictionary<uint, int> frequencies = [];
+            FFmpegLoader.FFmpegPath = Path.Combine(MonoFusionPath, "Tools", "ffmpeg");
+            foreach (string filePath in Directory.GetFiles(soundPath))
+			{
+				uint handle = uint.Parse(Path.GetFileNameWithoutExtension(filePath));
+                using MediaFile file = MediaFile.Open(filePath);
+				if (file.HasAudio)
+					frequencies.Add(handle, file.Audio.Info.SampleRate);
+				else
+					frequencies.Add(handle, 0);
+            }
+			return frequencies;
+        }
+
 		private static void AddNameBankChunk(CCNFeeder ccnFeeder, string mfaPath)
 		{
 			BinaryReader mfaReader = new BinaryReader(File.OpenRead(mfaPath));
@@ -383,10 +404,25 @@ namespace MonoFusion.Exporter.Exporters
 			uint fontCount = mfaReader.ReadUInt32();
 			mfaReader.BaseStream.Position += fontCount * 108; // 108 = Font Size
 
-			List<(uint, string)> soundNames = [];
-			mfaReader.BaseStream.Position += 4; // 4 = APMS
+            mfaReader.BaseStream.Position += 4; // 4 = APMS
 			uint soundCount = mfaReader.ReadUInt32();
 			for (int i = 0; i < soundCount; i++)
+			{
+				mfaReader.BaseStream.Position += 12;
+				uint size = mfaReader.ReadUInt32();
+				uint flags = mfaReader.ReadUInt32();
+				mfaReader.BaseStream.Position += 4;
+                int nameLength = mfaReader.ReadInt32();
+				if ((flags & 0x20) != 0)
+					mfaReader.BaseStream.Position += size + nameLength * 2;
+				else
+					mfaReader.BaseStream.Position += size;
+			}
+
+			List<(uint, string)> musicNames = [];
+            mfaReader.BaseStream.Position += 4; // 4 = ASUM
+            uint musicCount = mfaReader.ReadUInt32();
+			for (int i = 0; i < musicCount; i++)
 			{
 				uint handle = mfaReader.ReadUInt32();
 				mfaReader.BaseStream.Position += 8;
@@ -396,35 +432,12 @@ namespace MonoFusion.Exporter.Exporters
 				string name = Encoding.Unicode.GetString(mfaReader.ReadBytes(nameLength * 2)).TrimEnd('\0');
 				mfaReader.BaseStream.Position += size - nameLength * 2;
 
-				soundNames.Add((handle, name));
-			}
-
-			List<(uint, string)> musicNames = [];
-			mfaReader.BaseStream.Position += 4; // 4 = APMS
-			uint musicCount = mfaReader.ReadUInt32();
-			for (int i = 0; i < musicCount; i++)
-			{
-				uint handle = mfaReader.ReadUInt32();
-				mfaReader.BaseStream.Position += 8;
-				uint size = mfaReader.ReadUInt32();
-				mfaReader.BaseStream.Position += 8;
-				int nameLength = mfaReader.ReadInt32();
-				string name = Encoding.Unicode.GetString(mfaReader.ReadBytes(nameLength * 2)).TrimEnd('\0');
-				mfaReader.BaseStream.Position += size;
-
 				musicNames.Add((handle, name));
 			}
 
 			mfaReader.Close();
 
 			BinaryWriter nameChunk = new BinaryWriter(new MemoryStream());
-			nameChunk.Write(soundNames.Count);
-			foreach ((uint handle, string name) in soundNames)
-			{
-				nameChunk.Write((ushort)handle);
-				nameChunk.Write(Encoding.Unicode.GetBytes(name));
-				nameChunk.Write((ushort)0); // NTB
-			}
 			nameChunk.Write(musicNames.Count);
 			foreach ((uint handle, string name) in musicNames)
 			{
@@ -434,8 +447,8 @@ namespace MonoFusion.Exporter.Exporters
 			}
 
 			ccnFeeder.InsertChunk(CHUNK_NAMEBANK, (MemoryStream)nameChunk.BaseStream, CHUNK_IMAGEBANK, CHUNK_FONTBANK, CHUNK_SOUNDBANK, CHUNK_MUSICBANK);
-			ccnFeeder.Resave();
-		}
+            nameChunk.Close();
+        }
 
 		public override string[] GetSupportedExtensions()
 		{
@@ -620,8 +633,8 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 			AddExporterDesktopGL("Mac (OpenGL)");
 			AddExporterDesktopGL("Linux (OpenGL)");
 			AddExporterAndroid  ("Android (OpenGL)");
-			//AddExporterUWP      ("Xbox One/Series (UWP)");
-			//AddExporterBlazorGL ("Web (BlazorGL)");
+			AddExporterUWP      ("Xbox One/Series (UWP)");
+			AddExporterBlazorGL ("Web (BlazorGL)");
 		}
 
 		static void AddExporterWindowsDX(string platformName)

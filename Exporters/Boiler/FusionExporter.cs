@@ -109,14 +109,15 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 
 	public enum BuildFlag : uint
 	{
-		None             = 0x000,
-		CompressAssets   = 0x001,
-		ExternalImages   = 0x002,
-		ExternalSounds   = 0x004,
-		ExternalMusic    = 0x008,
-		UpdatedFormat    = 0x020,
-		UseMosaics       = 0x040,
-		AllowChildEvents = 0x100, // Requires UpdatedFormat
+		None				   = 0x0,
+		CompressAssets		   = 0x1,
+		ExternalImages		   = 0x2,
+		ExternalSounds		   = 0x4,
+		ExternalMusic		   = 0x8,
+		UpdatedFormat		   = 0x20,
+		UseMosaics			   = 0x40,
+		AllowChildEvents	   = 0x100 | 0x20,
+		ConvertToOgg		   = 0x800, // Incompatible with ExternalSounds and ExternalMusic
 	}
 
 	public static partial class ExporterHandler
@@ -125,10 +126,34 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 		[return: MarshalAs(UnmanagedType.Bool)]
 		static extern bool AllocConsole();
 
-		[UnmanagedCallersOnly(EntryPoint = "GetNumberOfBuildTypes", CallConvs = [typeof(CallConvStdcall)])]
+        static void InitConsole()
+        {
+            if (!AllocConsole())
+            {
+                // Console may already exist (e.g. host launched from a console),
+                // check Marshal.GetLastWin32Error() if you need to distinguish.
+            }
+
+            var stdout = new StreamWriter(Console.OpenStandardOutput())
+            {
+                AutoFlush = true
+            };
+            Console.SetOut(stdout);
+
+            var stderr = new StreamWriter(Console.OpenStandardError())
+            {
+                AutoFlush = true
+            };
+            Console.SetError(stderr);
+
+            var stdin = new StreamReader(Console.OpenStandardInput());
+            Console.SetIn(stdin);
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "GetNumberOfBuildTypes", CallConvs = [typeof(CallConvStdcall)])]
 		public static int GetNumberOfBuildTypes()
 		{
-			AllocConsole();
+            InitConsole();
 			return Exporters.Count;
 		}
 

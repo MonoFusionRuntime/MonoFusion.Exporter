@@ -49,8 +49,8 @@ namespace MonoFusion.Exporter
 
 		public void AddSound(string filePath)
 		{
-			//_content.Add((Type.Sound, filePath));
-			_content.Add((Type.Binary, filePath));
+			_content.Add((Type.Sound, filePath));
+			//_content.Add((Type.Binary, filePath));
 		}
 
 		public void AddMusic(string filePath)
