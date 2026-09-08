@@ -16,6 +16,7 @@ namespace MonoFusion.Exporter.Exporters
 	{
 		public const ushort CHUNK_MFAPATH    = 0x222E;
 		public const ushort CHUNK_EXTENSIONS = 0x2234;
+		public const ushort CHUNK_MOVEMENTS  = 0x223E;
 		public const ushort CHUNK_SHADERBANK = 0x2243;
 		public const ushort CHUNK_NAMEBANK   = 0x6660;
 		public const ushort CHUNK_IMAGEBANK  = 0x6666;
@@ -98,7 +99,7 @@ namespace MonoFusion.Exporter.Exporters
 				chunkReader.BaseStream.Position += 2; // Max Handle
 
 				string extPath = Path.Combine(MonoFusionPath, "Extensions");
-				Console.WriteLine($"Adding extensions from '{extPath}'");
+				Console.WriteLine($"Adding {count} extensions from '{extPath}'");
 				for (int i = 0; i < count; i++)
 				{
 					long pos = chunkReader.BaseStream.Position;
@@ -115,6 +116,33 @@ namespace MonoFusion.Exporter.Exporters
 					}
 					else
 						Console.WriteLine($"Could not find extension '{Path.GetFileNameWithoutExtension(name)}'");
+				}
+			}
+
+			List<string> movements = [];
+			if (ccnFeeder.HasChunk(CHUNK_MOVEMENTS))
+			{
+				FusionMemoryReader chunkReader = new FusionMemoryReader(ccnFeeder.GetChunkReader(CHUNK_MOVEMENTS));
+				ushort count = chunkReader.ReadUInt16();
+
+				string mvtPath = Path.Combine(MonoFusionPath, "Movements");
+				Console.WriteLine($"Adding {count} movements from '{mvtPath}'");
+				for (int i = 0; i < count; i++)
+				{
+					long pos = chunkReader.BaseStream.Position;
+					ushort size = (ushort)Math.Abs(chunkReader.ReadInt16()); // Negative
+					chunkReader.BaseStream.Position += 6; // Skip to Name
+					string name = chunkReader.ReadUnicodeString();
+					chunkReader.BaseStream.Position = pos + size; // Skip to next
+
+					string zipFileName = Path.ChangeExtension(name, ".json");
+					if (File.Exists(Path.Combine(mvtPath, zipFileName)))
+					{
+						extensions.Add(name);
+						Console.WriteLine($"Found movement '{Path.GetFileNameWithoutExtension(name)}'");
+					}
+					else
+						Console.WriteLine($"Could not find movement '{Path.GetFileNameWithoutExtension(name)}'");
 				}
 			}
 
@@ -279,6 +307,7 @@ namespace MonoFusion.Exporter.Exporters
 
 			// Add extensions
 			List<string> extensionLoaders = [];
+			List<string> movementLoaders = [];
 			List<string> extensionNuGets = [];
 			List<string> extensionNuGetVersions = [];
 			foreach (string extension in extensions)
@@ -343,6 +372,18 @@ namespace MonoFusion.Exporter.Exporters
                 }
             }
 
+			// Add movements
+			foreach (string movement in movements)
+            {
+                string mvtName = Path.GetFileNameWithoutExtension(movement);
+                JsonNode? j = JsonNode.Parse(File.ReadAllText(Path.Combine(MonoFusionPath, "Movements", mvtName + ".json")));
+
+                // Code
+                string codePath = Path.Combine(MonoFusionPath, "Movements", "Code", mvtName);
+				CopyDirectory(codePath, Path.Combine(targetDir, "Runtime", "Movements", mvtName));
+				movementLoaders.AddRange(GenerateMovementLoader(j, movement));
+            }
+
 			// Add NuGet Packages
 			string csprojPath = Path.Combine(targetDir, "MonoFusion.Runtime.csproj");
 			if (File.Exists(csprojPath) && extensionNuGets.Count > 0)
@@ -368,6 +409,7 @@ namespace MonoFusion.Exporter.Exporters
             writer.WriteTo(Path.Combine(targetDir, "Content\\Content.mgcb"));
 
             PushExtensionLoaders(Path.Combine(targetDir, "Runtime\\Extensions\\CExtLoad.cs"), extensionLoaders);
+            PushMovementLoaders(Path.Combine(targetDir, "Runtime\\Movements\\CRMvt.cs"), movementLoaders);
 			RenameSolution(targetDir, Path.GetFileNameWithoutExtension(targetFilePath), Path.GetFileNameWithoutExtension(mfaPath));
 
 			Task.WaitAll(imageTasks);
@@ -514,6 +556,25 @@ namespace MonoFusion.Exporter.Exporters
 			return loader;
 		}
 
+		public static List<string> GenerateMovementLoader(JsonNode? j, string name)
+		{
+			string className = $"CRunMvt{name}";
+			if (j != null)
+			{
+				JsonNode? movementClassName = j["movementClassName"];
+				if (movementClassName != null && movementClassName.GetValueKind() == JsonValueKind.String)
+					className = movementClassName.GetValue<string>();
+            }
+
+			string indent = new(' ', 16);
+			List<string> loader = [];
+			name = Path.GetFileNameWithoutExtension(name);
+			loader.Add(indent + $"case \"{name}\":");
+			indent += new string(' ', 4);
+			loader.Add(indent + $"return new {className}();");
+			return loader;
+		}
+
 		public static void PushExtensionLoaders(string targetFilePath, List<string> loaders)
 		{
 			List<string> CExtLoad = File.ReadAllLines(targetFilePath).ToList();
@@ -527,6 +588,21 @@ namespace MonoFusion.Exporter.Exporters
 				CExtLoad.InsertRange(i, loaders);
 			}
 			File.WriteAllLines(targetFilePath, CExtLoad);
+		}
+
+		public static void PushMovementLoaders(string targetFilePath, List<string> loaders)
+		{
+			List<string> CRMvt = File.ReadAllLines(targetFilePath).ToList();
+			for (int i = 0; i < CRMvt.Count; i++)
+			{
+				string curLine = CRMvt[i];
+				if (!curLine.Contains("MONOFUSION_MOVEMENTS_HERE"))
+					continue;
+
+                CRMvt.RemoveAt(i);
+                CRMvt.InsertRange(i, loaders);
+			}
+			File.WriteAllLines(targetFilePath, CRMvt);
 		}
 
 		public static void CopyDirectory(string sourceDir, string destinationDir, bool recursive = true)
