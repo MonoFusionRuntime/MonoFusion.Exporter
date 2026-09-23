@@ -402,7 +402,8 @@ namespace MonoFusion.Exporter.Exporters
             }
 
             // Add default files
-            writer.AddFont("Arial27.spritefont");
+            writer.AddFont("Arial9.spritefont");
+            writer.AddFont("Arial12.spritefont");
             writer.AddEffect("invert.fx");
             writer.AddEffect("mono.fx");
 
