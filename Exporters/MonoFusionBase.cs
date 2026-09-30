@@ -9,6 +9,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Xml.Linq;
 
 namespace MonoFusion.Exporter.Exporters
 {
@@ -310,6 +311,7 @@ namespace MonoFusion.Exporter.Exporters
 			List<string> movementLoaders = [];
 			List<string> extensionNuGets = [];
 			List<string> extensionNuGetVersions = [];
+			List<string> extensionCommons = [];
 			foreach (string extension in extensions)
             {
                 string extName = Path.GetFileNameWithoutExtension(extension);
@@ -324,50 +326,32 @@ namespace MonoFusion.Exporter.Exporters
 				if (j != null)
 				{
 					Console.WriteLine("Found JsonNode from " + extName);
-					JsonNode? contentFiles = j["contentFiles"];
-					if (contentFiles != null && contentFiles.GetValueKind() == JsonValueKind.Array)
-                    {
-                        Console.WriteLine("Found Content Files from " + extName);
-                        writer.AddExtension(extName, contentFiles.AsArray());
-					}
+					ParseExtensionJson(j, extName, writer, ref extensionNuGets, ref extensionNuGetVersions);
 
-					JsonNode? contentImporters = j["contentImporters"];
-					if (contentImporters != null && contentImporters.GetValueKind() == JsonValueKind.Array)
-                        foreach (JsonNode? val in contentImporters.AsArray())
-                            if (val != null && val.GetValueKind() == JsonValueKind.String)
-                                writer.AddReference(val.GetValue<string>());
-
-					JsonNode? nugetPackages = j["nugetPackages"];
-					if (nugetPackages != null && nugetPackages.GetValueKind() == JsonValueKind.Array)
-						foreach (JsonNode? package in nugetPackages.AsArray())
-							if (package != null && package.GetValueKind() == JsonValueKind.Object)
+                    JsonNode? commonPackages = j["commonPackages"];
+					if (commonPackages != null && commonPackages.GetValueKind() == JsonValueKind.Array)
+						foreach (JsonNode? package in commonPackages.AsArray())
+							if (package != null && package.GetValueKind() == JsonValueKind.String)
 							{
-								JsonNode? packageName = package["packageName"];
-								JsonNode? packageVersion = package["packageVersion"];
-								string packageNameS = string.Empty, packageVersionS = string.Empty;
-								if (packageName != null && packageName.GetValueKind() == JsonValueKind.String)
+								string pkgName = package.GetValue<string>();
+                                if (!extensionCommons.Contains(pkgName))
 								{
-									packageNameS = packageName.GetValue<string>();
-                                    continue;
-								}
-								if (packageVersion != null && packageVersion.GetValueKind() == JsonValueKind.String)
-								{
-                                    packageVersionS = packageVersion.GetValue<string>();
-                                    continue;
-								}
+									string jcPath = Path.Combine(MonoFusionPath, "Shared", pkgName + ".json");
+                                    JsonNode? jc = File.Exists(jcPath) ? JsonNode.Parse(File.ReadAllText(jcPath)) : null;
 
-                                int duplicate = extensionNuGets.IndexOf(packageNameS);
-								if (duplicate != -1)
-                                {
-                                    NuGetVersion thisVer = NuGetVersion.Parse(packageVersionS);
-                                    NuGetVersion thatVer = NuGetVersion.Parse(extensionNuGetVersions[duplicate]);
-									if (thisVer > thatVer)
-										extensionNuGetVersions[duplicate] = packageVersionS;
-									continue;
-                                }
+                                    // Code
+                                    codePath = Path.Combine(MonoFusionPath, "Shared", "Code", pkgName);
+                                    CopyDirectory(codePath, Path.Combine(targetDir, "Runtime", "Extensions", pkgName));
 
-                                extensionNuGets.Add(packageNameS);
-								extensionNuGetVersions.Add(packageVersionS);
+                                    // Content
+                                    if (jc != null)
+                                    {
+                                        Console.WriteLine("Found JsonNode from " + pkgName);
+                                        ParseExtensionJson(jc, pkgName, writer, ref extensionNuGets, ref extensionNuGetVersions);
+                                    }
+
+                                    extensionCommons.Add(pkgName);
+								}
                             }
                 }
             }
@@ -416,6 +400,57 @@ namespace MonoFusion.Exporter.Exporters
 			Task.WaitAll(imageTasks);
 			return true;
 		}
+
+		private void ParseExtensionJson(JsonNode j, string name, MGCBWriter writer,
+            ref List<string> extensionNuGets,
+			ref List<string> extensionNuGetVersions)
+		{
+            JsonNode? contentFiles = j["contentFiles"];
+            if (contentFiles != null && contentFiles.GetValueKind() == JsonValueKind.Array)
+            {
+                Console.WriteLine("Found Content Files from " + name);
+                writer.AddExtension(name, contentFiles.AsArray());
+            }
+
+            JsonNode? contentImporters = j["contentImporters"];
+            if (contentImporters != null && contentImporters.GetValueKind() == JsonValueKind.Array)
+                foreach (JsonNode? val in contentImporters.AsArray())
+                    if (val != null && val.GetValueKind() == JsonValueKind.String)
+                        writer.AddReference(val.GetValue<string>());
+
+            JsonNode? nugetPackages = j["nugetPackages"];
+            if (nugetPackages != null && nugetPackages.GetValueKind() == JsonValueKind.Array)
+                foreach (JsonNode? package in nugetPackages.AsArray())
+                    if (package != null && package.GetValueKind() == JsonValueKind.Object)
+                    {
+                        JsonNode? packageName = package["packageName"];
+                        JsonNode? packageVersion = package["packageVersion"];
+                        string packageNameS = string.Empty, packageVersionS = string.Empty;
+                        if (packageName != null && packageName.GetValueKind() == JsonValueKind.String)
+                        {
+                            packageNameS = packageName.GetValue<string>();
+                            continue;
+                        }
+                        if (packageVersion != null && packageVersion.GetValueKind() == JsonValueKind.String)
+                        {
+                            packageVersionS = packageVersion.GetValue<string>();
+                            continue;
+                        }
+
+                        int duplicate = extensionNuGets.IndexOf(packageNameS);
+                        if (duplicate != -1)
+                        {
+                            NuGetVersion thisVer = NuGetVersion.Parse(packageVersionS);
+                            NuGetVersion thatVer = NuGetVersion.Parse(extensionNuGetVersions[duplicate]);
+                            if (thisVer > thatVer)
+                                extensionNuGetVersions[duplicate] = packageVersionS;
+                            continue;
+                        }
+
+                        extensionNuGets.Add(packageNameS);
+                        extensionNuGetVersions.Add(packageVersionS);
+                    }
+        }
 
 		private Dictionary<uint, int> GetSoundFrequencies(string soundPath)
 		{
