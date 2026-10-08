@@ -12,9 +12,18 @@ namespace MonoFusion.Exporter
 			ref TASKDIALOGCONFIG pTaskConfig,
 			out int pnButton,
 			out int pnRadioButton,
-			out bool pfVerificationFlagChecked);
+			out bool pfVerificationFlagChecked
+		);
 
-		[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        [DllImport("user32.dll", EntryPoint = "MessageBoxW", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern int MessageBoxW(
+			IntPtr hWnd,
+			string lpText, 
+			string lpCaption, 
+			uint uType
+		);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
 		public struct TASKDIALOGCONFIG
 		{
 			public uint cbSize;
@@ -52,6 +61,8 @@ namespace MonoFusion.Exporter
 
 		public const uint TDCBF_OK_BUTTON = 0x1;
 		public const uint TDCBF_CANCEL_BUTTON = 0x8;
-		public const int IDOK = 1;
+        public const uint MB_OK = 0x0;
+        public const uint MB_ICONEXCLAMATION = 0x30;
+        public const int IDOK = 1;
 	}
 }

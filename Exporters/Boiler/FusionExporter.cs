@@ -1,6 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace MonoFusion.Exporter.Exporters.Boiler
 {
@@ -153,6 +154,9 @@ namespace MonoFusion.Exporter.Exporters.Boiler
         [UnmanagedCallersOnly(EntryPoint = "GetNumberOfBuildTypes", CallConvs = [typeof(CallConvStdcall)])]
 		public static int GetNumberOfBuildTypes()
 		{
+			if (!VersionChecker.Check())
+				return 0;
+
             InitConsole();
 			return Exporters.Count;
 		}
