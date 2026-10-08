@@ -150,7 +150,7 @@ namespace MonoFusion.Exporter.Exporters
 								"/p:PublishReadyToRun=false " +
 								"/p:UseSharedCompilation=false " + // Prevent Steam from thinking the app is still running
 							   $"/p:PublishDir=\"{targetDir}\" " +
-								"-f net8.0" + cmdPrepend,
+								"-f net10.0" + cmdPrepend,
 					WorkingDirectory = solutionDir,
 					UseShellExecute = false,
 				}
