@@ -80,9 +80,12 @@ namespace MonoFusion.Exporter.Exporters
 
 			// Create Icon
 			string iconPath = Path.Combine(Path.GetDirectoryName(ccnFilePath)!, "appicon.png");
-			byte[] png = File.ReadAllBytes(iconPath);
-			IcoWriter.WriteIco(png, Path.Combine(solutionDir, "Icon.ico"));
-			CreateAppIconBitmap(iconPath, Path.Combine(solutionDir, "Icon.bmp"));
+			if (File.Exists(iconPath))
+            {
+                byte[] png = File.ReadAllBytes(iconPath);
+                IcoWriter.WriteIco(png, Path.Combine(solutionDir, "Icon.ico"));
+                CreateAppIconBitmap(iconPath, Path.Combine(solutionDir, "Icon.bmp"));
+            }
 
 			if (_project)
 			{
@@ -462,7 +465,11 @@ namespace MonoFusion.Exporter.Exporters
 
 		void CreateIcns(string targetPath, string tempPath)
 		{
-			byte[] png = File.ReadAllBytes(Path.Combine(tempPath, "appicon.png"));
+			string iconPath = Path.Combine(tempPath, "appicon.png");
+			if (!File.Exists(iconPath))
+				return;
+
+            byte[] png = File.ReadAllBytes(iconPath);
 			int blockSize = png.Length + 8;
 
 			string path = Path.Combine(targetPath, "Contents\\Resources");

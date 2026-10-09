@@ -53,8 +53,11 @@ namespace MonoFusion.Exporter.Exporters
 
 			// Create Icon
 			string iconPath = Path.Combine(Path.GetDirectoryName(ccnFilePath)!, "appicon.png");
-			byte[] png = File.ReadAllBytes(iconPath);
-			IcoWriter.WriteIco(png, Path.Combine(solutionDir, "Icon.ico"));
+			if (File.Exists(iconPath))
+            {
+                byte[] png = File.ReadAllBytes(iconPath);
+                IcoWriter.WriteIco(png, Path.Combine(solutionDir, "Icon.ico"));
+            }
 
 			if (_project)
 			{

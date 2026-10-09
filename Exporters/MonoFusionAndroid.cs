@@ -42,7 +42,8 @@ namespace MonoFusion.Exporter.Exporters
 
 			// Create Icon
 			string iconPath = Path.Combine(Path.GetDirectoryName(ccnFilePath)!, "appicon.png");
-			File.Copy(iconPath, Path.Combine(solutionDir, "Resources\\Drawable\\Icon.png"));
+			if (File.Exists(iconPath))
+				File.Copy(iconPath, Path.Combine(solutionDir, "Resources\\Drawable\\Icon.png"));
 
 			if (_project)
 			{
