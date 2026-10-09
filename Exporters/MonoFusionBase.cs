@@ -92,6 +92,23 @@ namespace MonoFusion.Exporter.Exporters
 				Console.WriteLine($"Found mfa at '{mfaPath}'");
 			}
 
+			if (!File.Exists(mfaPath))
+            {
+				bool hasPath = mfaPath != "ERROR" && !string.IsNullOrEmpty(mfaPath);
+                TaskDialog.MessageBoxW(
+                    IntPtr.Zero,
+                    "MonoFusion requires an MFA to read from, but no MFA was found.\n" +
+                    (hasPath ?
+						"Expected an MFA at " + mfaPath + "but found nothing. Try resaving your MFA.\n\n" :
+						"Expected an MFA, but none was found. Try saving your MFA.\n\n"
+					) +
+					"An MFA is required because Clickteam does not pass in any data about the sound bank to custom exporters.",
+                    "MonoFusion | Missing MFA",
+                    TaskDialog.MB_OK | TaskDialog.MB_ICONEXCLAMATION
+                );
+				return false;
+            }
+
 			List<string> extensions = [];
 			if (ccnFeeder.HasChunk(CHUNK_EXTENSIONS))
 			{
