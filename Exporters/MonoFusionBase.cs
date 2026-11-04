@@ -156,7 +156,7 @@ namespace MonoFusion.Exporter.Exporters
 					string zipFileName = Path.ChangeExtension(name, ".json");
 					if (File.Exists(Path.Combine(mvtPath, zipFileName)))
 					{
-						extensions.Add(name);
+						movements.Add(name);
 						Console.WriteLine($"Found movement '{Path.GetFileNameWithoutExtension(name)}'");
 					}
 					else
