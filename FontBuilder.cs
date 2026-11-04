@@ -1,5 +1,8 @@
 ﻿using Microsoft.Win32;
 using MonoFusion.Exporter.Exporters.Boiler;
+using System.Buffers.Binary;
+using System.Text;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace MonoFusion.Exporter
 {
@@ -12,7 +15,7 @@ namespace MonoFusion.Exporter
 			_font = fontData;
 		}
 
-		public string Build()
+		/*public string Build()
 		{
 			return BuildSpriteFont();
 		}
@@ -43,24 +46,44 @@ namespace MonoFusion.Exporter
 			   @"</XnaContent>"
 			];
 			return string.Join('\n', data);
-		}
+		}*/
+
+		public string GetFileName()
+        {
+            string? path = GetFontFilePath();
+
+            if (path == null)
+                return string.Empty;
+
+            return Path.GetFileName(path);
+        }
+
+		public string GetTypefaceName()
+        {
+            return _font.lfFaceName;
+        }
 
 		public string GetExtension()
-		{
-			return ".spritefont";
-		}
+        {
+            string? path = GetFontFilePath();
+
+            if (path == null)
+                return string.Empty;
+
+            return Path.GetExtension(path);
+            //return ".spritefont";
+        }
 
 		public bool IsBuildable()
 		{
-			string? path = GetFontFilePath(_font);
-
-			if (path == null)
-				return false;
-
-			string ext = Path.GetExtension(path);
-
+			string ext = GetExtension();
 			return ext.Equals(".ttf", StringComparison.OrdinalIgnoreCase)
 				|| ext.Equals(".otf", StringComparison.OrdinalIgnoreCase);
+		}
+
+		public string GetFontFilePath()
+		{
+			return GetFontFilePath(_font)!;
 		}
 
 		private static string? GetFontFilePath(FusionFont logFont)
@@ -82,7 +105,13 @@ namespace MonoFusion.Exporter
 				Registry.CurrentUser
 			};
 
-			foreach (RegistryKey hive in hives)
+			bool italic = logFont.lfItalic;
+			bool underscore = logFont.lfUnderline;
+			bool strikeout = logFont.lfStrikeOut;
+
+            Dictionary<int, string> weights = [];
+            Dictionary<int, string> fallback = [];
+            foreach (RegistryKey hive in hives)
 			{
 				foreach (string registryPath in registryPaths)
 				{
@@ -96,21 +125,75 @@ namespace MonoFusion.Exporter
 						if (!valueName.StartsWith(faceName, StringComparison.OrdinalIgnoreCase))
 							continue;
 
+						// Only look at this font if it's a TrueType font
+						if (!valueName.Contains("(TrueType)"))
+							continue;
+
 						string? file = key.GetValue(valueName) as string;
 
 						if (string.IsNullOrEmpty(file))
 							continue;
 
-						string? fullPath = ResolveFontPath(hive, file);
+                        // Ignore TrueType Collections
+                        if (Path.GetExtension(file) == ".ttc")
+                            continue;
 
-						if (fullPath != null)
-							return fullPath;
+                        string? fullPath = ResolveFontPath(hive, file);
+
+						if (fullPath != null && File.Exists(fullPath))
+						{
+							using BinaryReader reader = new BinaryReader(File.OpenRead(fullPath));
+							reader.BaseStream.Position = 4; // sfntVersion
+							ushort numTables = BinaryPrimitives.ReadUInt16BigEndian(reader.ReadBytes(2));
+							reader.BaseStream.Position = 12; // searchRange, entrySelector, rangeShift
+							for (int i = 0; i < numTables; i++)
+							{
+								string tableTag = Encoding.ASCII.GetString(reader.ReadBytes(4));
+								if (tableTag == "OS/2")
+								{
+                                    reader.BaseStream.Position += 4; // checksum
+                                    reader.BaseStream.Position = BinaryPrimitives.ReadUInt32BigEndian(reader.ReadBytes(4)); // offset
+
+                                    reader.BaseStream.Position += 4; // version, xAvgCharWidth
+                                    ushort usWeightClass = BinaryPrimitives.ReadUInt16BigEndian(reader.ReadBytes(2));
+                                    reader.BaseStream.Position += 56; // usWidthClass, fsType, ySubscriptXSize, ySubscriptYSize
+                                                                      // ySubscriptXOffset, ySubscriptYOffset, ySuperscriptXSize, ySuperscriptYSize
+                                                                      // ySuperscriptXOffset, ySuperscriptYOffset, yStrikeoutSize, yStrikeoutPosition
+                                                                      // sFamilyClass, panose, ulUnicodeRange[4], achVendID[4]
+                                    ushort fsSelection = BinaryPrimitives.ReadUInt16BigEndian(reader.ReadBytes(2));
+
+									bool isItalic = (fsSelection & 0x1) != 0;
+									bool isUnderscore = (fsSelection & 0x2) != 0;
+									bool isStrikeout = (fsSelection & 0x10) != 0;
+									if (isItalic == italic && isUnderscore == underscore && isStrikeout && strikeout)
+                                    {
+                                        if (usWeightClass == logFont.lfWeight)
+                                            return fullPath;
+										weights.Add(usWeightClass, fullPath);
+                                    }
+									else
+                                        fallback.Add(usWeightClass, fullPath);
+
+                                    break;
+								}
+                                reader.BaseStream.Position += 12; // checksum, offset, length
+                            }
+						}
 					}
 				}
 			}
 
+			if (weights.Count == 0)
+				weights = fallback;
+
+			List<int> weightKeys = [.. weights.Keys];
+			weightKeys.Sort();
+			for (int i = weights.Count - 1; i >= 0; i--)
+				if (weightKeys[i] <= logFont.lfWeight)
+					return weights[weightKeys[i]];
+
 			// Common GDI aliases
-			if (faceName.Equals("System", StringComparison.OrdinalIgnoreCase))
+			/*if (faceName.Equals("System", StringComparison.OrdinalIgnoreCase))
 			{
 				string path = Path.Combine(
 					Environment.GetFolderPath(Environment.SpecialFolder.Fonts),
@@ -118,7 +201,7 @@ namespace MonoFusion.Exporter
 
 				if (File.Exists(path))
 					return path;
-			}
+			}*/
 
 			return null;
 		}

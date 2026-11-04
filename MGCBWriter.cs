@@ -23,6 +23,7 @@ namespace MonoFusion.Exporter
         private List<(Type, string)> _content = [];
         private List<(string, JsonArray)> _extensions = [];
 		private List<string> _references = [];
+		private List<string> _typeFaces = [];
 
         public MGCBWriter(string platform, string monoFusionPath, bool compress = false)
 		{
@@ -36,10 +37,19 @@ namespace MonoFusion.Exporter
 			_content.Add((Type.Binary, filePath));
 		}
 
-		public void AddFont(string filePath)
+		public bool AddFont(string filePath)
 		{
-			_content.Add((Type.Font, filePath));
-		}
+			string typeface = Path.GetFileNameWithoutExtension(filePath);
+
+            if (!_typeFaces.Contains(typeface))
+			{
+				_content.Add((Type.Font, filePath));
+				_typeFaces.Add(typeface);
+				return true;
+			}
+
+			return false;
+        }
 
 		public void AddImage(string filePath)
 		{
@@ -251,19 +261,25 @@ namespace MonoFusion.Exporter
 		{
 			List<string> output = [CreateContentHeader(filePath)];
 			string ext = Path.GetExtension(filePath);
+			string finalParam = "build";
 			switch (type)
 			{
 				case Type.Binary:
+					// TODO: Why is this not just copy?
 					output.Add(CreateParameter("importer", "BinaryImporter"));
 					output.Add(CreateParameter("processor", "BinaryProcessor"));
 					output.Add(CreateProcessorParam("RuntimeAssembly", "MONOFUSION_ASSEMBLY"));
 					break;
 				case Type.Font:
-					output.Add(CreateParameter("importer", "FontDescriptionImporter"));
+					// New code uses FontStashSharp, which requires raw ttf/otf files
+					finalParam = "copy";
+
+                    // Old code to use the default MonoGame font system
+                    /*output.Add(CreateParameter("importer", "FontDescriptionImporter"));
 					output.Add(CreateParameter("processor", "FontDescriptionProcessor"));
 					output.Add(CreateProcessorParam("PremultiplyAlpha", "True"));
-					output.Add(CreateProcessorParam("TextureFormat", "Compressed"));
-					break;
+					output.Add(CreateProcessorParam("TextureFormat", "Compressed"));*/
+                    break;
 				case Type.Image:
 					output.Add(CreateParameter("importer", "TextureImporter"));
 					output.Add(CreateParameter("processor", "TextureProcessor"));
@@ -294,7 +310,7 @@ namespace MonoFusion.Exporter
 					output.Add(CreateProcessorParam("DebugMode", "Auto"));
 					break;
 			}
-			output.Add(CreateParameter("build", filePath));
+			output.Add(CreateParameter(finalParam, filePath));
 			output.Add("");
 			return output;
 		}

@@ -304,10 +304,18 @@ namespace MonoFusion.Exporter.Exporters
 						fontBuilder = new FontBuilder(arialFont);
 					}
 
-					string outPath_mgcb = Path.Combine("Fonts", "Fnt" + handle.ToString("D4") + fontBuilder.GetExtension());
+					// New code uses FontStashSharp, which requires raw ttf/otf files
+					string outPath_mgcb = Path.Combine("Fonts", fontBuilder.GetTypefaceName() + fontBuilder.GetExtension());
+					string outPath = Path.Combine(targetDir, "Content", outPath_mgcb);
+					string fontPath = fontBuilder.GetFontFilePath();
+                    if (File.Exists(fontPath) && writer.AddFont(outPath_mgcb))
+						File.Copy(fontPath, outPath);
+
+					// Old code to use the default MonoGame font system
+					/*string outPath_mgcb = Path.Combine("Fonts", "Fnt" + handle.ToString("D4") + fontBuilder.GetExtension());
 					string outPath = Path.Combine(targetDir, "Content", outPath_mgcb);
 					File.WriteAllText(outPath, fontBuilder.Build());
-					writer.AddFont(outPath_mgcb);
+					writer.AddFont(outPath_mgcb);*/
 				}
 			}
 
@@ -403,8 +411,7 @@ namespace MonoFusion.Exporter.Exporters
             }
 
             // Add default files
-            writer.AddFont("Arial9.spritefont");
-            writer.AddFont("Arial12.spritefont");
+            writer.AddFont("Fonts\\Arial.ttf");
             writer.AddEffect("invert.fx");
             writer.AddEffect("mono.fx");
 
@@ -756,11 +763,11 @@ namespace MonoFusion.Exporter.Exporters.Boiler
 		static ExporterHandler()
 		{
             RuntimesPath = Path.Combine(Directory.GetCurrentDirectory(), "MonoFusion", "Runtimes");
-            AddExporterWindowsDX("Windows (DirectX)");
+            //AddExporterWindowsDX("Windows (DirectX)");
 			AddExporterDesktopGL("Windows (OpenGL)");
-			AddExporterDesktopGL("Mac (OpenGL)");
-			AddExporterDesktopGL("Linux (OpenGL)");
-			AddExporterAndroid  ("Android (OpenGL)");
+			//AddExporterDesktopGL("Mac (OpenGL)");
+			//AddExporterDesktopGL("Linux (OpenGL)");
+			//AddExporterAndroid  ("Android (OpenGL)");
 		}
 
 		static void AddExporterWindowsDX(string platformName)
@@ -779,7 +786,7 @@ namespace MonoFusion.Exporter.Exporters.Boiler
             if (File.Exists(Path.Combine(RuntimesPath, "RuntimeDesktopGL.zip")))
             {
                 Exporters.Add(new MonoFusionDesktopGL(platformName, true));
-				Exporters.Add(new MonoFusionDesktopGL(platformName, false));
+				//Exporters.Add(new MonoFusionDesktopGL(platformName, false));
             }
             else
                 Console.WriteLine("Could not find DesktopGL Runtime");
