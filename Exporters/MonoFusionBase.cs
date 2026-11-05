@@ -624,7 +624,8 @@ namespace MonoFusion.Exporter.Exporters
 			name = Path.GetFileNameWithoutExtension(name);
 			loader.Add(indent + $"case \"{name}\":");
 			indent += new string(' ', 4);
-			loader.Add(indent + $"return new {className}();");
+			loader.Add(indent + $"pObject = new {className}();");
+			loader.Add(indent + "break;");
 			return loader;
 		}
 
