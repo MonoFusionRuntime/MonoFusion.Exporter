@@ -380,7 +380,7 @@ namespace MonoFusion.Exporter.Exporters
                 JsonNode? j = JsonNode.Parse(File.ReadAllText(Path.Combine(MonoFusionPath, "Movements", mvtName + ".json")));
 
                 // Code
-                string codePath = Path.Combine(MonoFusionPath, "Movements", "Code", mvtName);
+                string codePath = Path.Combine(MonoFusionPath, "Movements", mvtName);
 				CopyDirectory(codePath, Path.Combine(targetDir, "Runtime", "Movements", mvtName));
 				movementLoaders.AddRange(GenerateMovementLoader(j, movement));
             }
