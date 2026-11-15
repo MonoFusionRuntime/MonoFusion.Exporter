@@ -60,7 +60,7 @@ namespace MonoFusion.Exporter
         public void WriteToCCN(CCNFeeder ccnFeeder, Dictionary<uint, int> frequencies)
         {
             BinaryWriter data = new BinaryWriter(new MemoryStream());
-            data.Write(Items.Length);
+            data.Write((short)Items.Length);
             foreach (SoundBankItem item in Items)
             {
                 data.Write((ushort)item.handle);
